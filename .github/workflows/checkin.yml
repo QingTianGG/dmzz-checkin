@@ -5,7 +5,7 @@ on:
     # 北京时间 09:00 = UTC 01:00（站点在 UTC 00:00 / 北京 08:00 重置签到）
     # 注意：GitHub 的定时任务可能延迟几分钟到几十分钟才开始
     - cron: "0 1 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch: 
 
 permissions:
   contents: read
