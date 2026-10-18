@@ -1,0 +1,67 @@
+name: DZMM 每日签到
+
+on:
+  schedule:
+    # 北京时间 09:00 = UTC 01:00（站点在 UTC 00:00 / 北京 08:00 重置签到）
+    # 注意：GitHub 的定时任务可能延迟几分钟到几十分钟才开始
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dzmm-checkin
+  cancel-in-progress: false
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 站点会话 Cookie 里的 access_token 只有 1 小时，
+      # 但服务端会在过期时用 refresh_token 续期并回写新 Cookie。
+      # 把续期后的会话缓存下来，下一次运行接着用（避免旧 refresh_token 被重复消费）。
+      - name: 恢复会话缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: cookies.json
+          key: dzmm-session-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            dzmm-session-
+
+      - name: 执行签到
+        id: checkin
+        env:
+          DZMM_COOKIE: ${{ secrets.DZMM_COOKIE }}
+        run: python dzmm_checkin.py
+
+      - name: 保存续期后的会话
+        if: ${{ !cancelled() && hashFiles('cookies.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: cookies.json
+          key: dzmm-session-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: 结果摘要
+        if: always()
+        run: |
+          {
+            echo "### DZMM 每日签到"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| 本次领取 | ${{ steps.checkin.outputs.checked_in }} |"
+            echo "| 奖励积分 | ${{ steps.checkin.outputs.reward }} |"
+            echo "| 结果 | ${{ steps.checkin.outputs.reason }} |"
+            echo "| 时间 | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"
+          } >> "$GITHUB_STEP_SUMMARY"
